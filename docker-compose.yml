@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  konekt:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: wa-sender
+    environment:
+      - WA_SECRET=${WA_SECRET}
+      - PORT=4001
+      - VIRTUAL_HOST=konekt.nexteranga.com
+      - LETSENCRYPT_HOST=konekt.nexteranga.com
+      - LETSENCRYPT_EMAIL=skhadimsall@gmail.com
+      - DB_HOST=fitsen-postgresql
+      - DB_PORT=5432
+      - DB_NAME=javarappel
+      - DB_USER=isi_user
+      - DB_PASSWORD=isi_pass
+    volumes:
+      - wa-sessions:/app/.wwebjs_auth
+    networks:
+      - nginx-proxy
+      - fitsen-network
+    restart: unless-stopped
+
+volumes:
+  wa-sessions:
+
+networks:
+  nginx-proxy:
+    external: true
+  fitsen-network:
+    external: true
