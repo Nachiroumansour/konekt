@@ -1,0 +1,98 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          cat > .env <<EOF
+          WA_SECRET=${{ secrets.WA_SECRET }}
+          VIRTUAL_HOST=${{ secrets.VIRTUAL_HOST }}
+          LETSENCRYPT_HOST=${{ secrets.VIRTUAL_HOST }}
+          LETSENCRYPT_EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_PORT=${{ secrets.DB_PORT }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          PORT=4001
+          NODE_ENV=production
+          EOF
+
+      - name: Build Backend Docker image
+        run: |
+          docker build -t konekt/wa-sender:latest ./server
+
+      - name: Validate resource limits
+        run: |
+          cat > /tmp/validate.sh << 'VALIDATE_SCRIPT'
+          #!/bin/bash
+          set -e
+          TIER="starter"
+          COMPOSE_FILE="$GITHUB_WORKSPACE/docker-compose.yml"
+
+          declare -A RAM_LIMITS=( ["starter"]=512 ["pro"]=2048 ["business"]=4096 )
+          declare -A CPU_LIMITS=( ["starter"]=0.5 ["pro"]=2 ["business"]=4 )
+
+          MAX_RAM=${RAM_LIMITS[$TIER]}
+          MAX_CPU=${CPU_LIMITS[$TIER]}
+
+          echo "🔍 Validation tier: $TIER (${MAX_RAM}MB RAM, ${MAX_CPU} CPU max)"
+
+          # Vérifier mémoire
+          MEM_LIMITS=$(grep -E "mem_limit:" "$COMPOSE_FILE" | awk '{print $2}' | tr -d 'm' | tr -d '"' || echo "")
+          TOTAL_RAM=0
+          for limit in $MEM_LIMITS; do
+            if [[ $limit =~ ^[0-9]+$ ]]; then
+              TOTAL_RAM=$((TOTAL_RAM + limit))
+            fi
+          done
+
+          if (( TOTAL_RAM > MAX_RAM )); then
+            echo "❌ VIOLATION: ${TOTAL_RAM}MB dépasse le maximum autorisé (${MAX_RAM}MB)"
+            echo "   Contactez: info@nexteranga.com pour upgrader"
+            exit 1
+          fi
+
+          echo "✅ Ressources conformes (${TOTAL_RAM}MB / ${MAX_RAM}MB)"
+          VALIDATE_SCRIPT
+
+          chmod +x /tmp/validate.sh
+          /tmp/validate.sh
+
+      - name: Deploy with Docker Compose
+        run: |
+          cd /srv/projects/konekt
+          cp $GITHUB_WORKSPACE/.env .
+          cp $GITHUB_WORKSPACE/docker-compose.yml .
+          docker compose pull || true
+          docker compose up -d --build
+
+      - name: Wait for services to be healthy
+        run: |
+          sleep 15
+          echo "🔍 Vérifying services..."
+          docker ps | grep wa-sender
+
+      - name: Health check
+        run: |
+          curl -f https://${{ secrets.VIRTUAL_HOST }} || echo "⏳ Site not yet ready (SSL provisioning may take 2-5 min)"
+
+      - name: Cleanup old images
+        run: |
+          docker image prune -f
+
+      - name: Show container logs
+        if: failure()
+        run: |
+          docker logs wa-sender --tail 50 2>/dev/null || true
