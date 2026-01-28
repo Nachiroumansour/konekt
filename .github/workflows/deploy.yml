@@ -27,7 +27,7 @@ jobs:
 
       - name: Build Backend Docker image
         run: |
-          docker build --no-cache -t konekt/konekt:latest ./server
+          docker build --no-cache -t konekt/konekt:latest -f server/Dockerfile .
 
       - name: Validate resource limits
         run: |
