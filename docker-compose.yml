@@ -32,6 +32,9 @@ services:
       - DB_NAME=konektdb
       - DB_USER=konektuser
       - DB_PASSWORD=konektpass
+      - VIRTUAL_HOST=konekt.nexteranga.com
+      - LETSENCRYPT_HOST=konekt.nexteranga.com
+      - LETSENCRYPT_EMAIL=skhadimsall@gmail.com
     depends_on:
       - postgres
     volumes:
