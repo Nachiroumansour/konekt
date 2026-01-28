@@ -1,27 +1,39 @@
 version: "3.9"
 
+
 services:
+  postgres:
+    image: postgres:15
+    container_name: konekt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: konektdb
+      POSTGRES_USER: konektuser
+      POSTGRES_PASSWORD: konektpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - konekt-pg-data:/var/lib/postgresql/data
+    networks:
+      - konekt-network
+
   konekt:
     build:
       context: ./server
       dockerfile: Dockerfile
     container_name: konekt
     restart: unless-stopped
-
     mem_limit: 512m
     cpus: 0.5
-
     environment:
-      # - WA_SECRET=${WA_SECRET}
       - PORT=4001
-      - VIRTUAL_HOST=konekt.nexteranga.com
-      - LETSENCRYPT_HOST=konekt.nexteranga.com
-      - LETSENCRYPT_EMAIL=skhadimsall@gmail.com
-      - DB_HOST=fitsen.life
+      - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_NAME=javarappel
-      - DB_USER=isi_user
-      - DB_PASSWORD=isi_pass
+      - DB_NAME=konektdb
+      - DB_USER=konektuser
+      - DB_PASSWORD=konektpass
+    depends_on:
+      - postgres
     volumes:
       - wa-sessions:/app/.wwebjs_auth
       - konekt-back-logs:/app/logs
@@ -29,9 +41,11 @@ services:
       - konekt-network
 
 
+
 volumes:
   wa-sessions:
   konekt-back-logs:
+  konekt-pg-data:
 
 networks:
   konekt-network:

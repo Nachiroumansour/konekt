@@ -20,11 +20,7 @@ jobs:
           VIRTUAL_HOST=${{ secrets.VIRTUAL_HOST }}
           LETSENCRYPT_HOST=${{ secrets.VIRTUAL_HOST }}
           LETSENCRYPT_EMAIL=${{ secrets.LETSENCRYPT_EMAIL }}
-          DB_HOST=${{ secrets.DB_HOST }}
-          DB_PORT=${{ secrets.DB_PORT }}
-          DB_NAME=${{ secrets.DB_NAME }}
-          DB_USER=${{ secrets.DB_USER }}
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          # Les variables DB sont gérées par docker-compose.yml
           PORT=4001
           NODE_ENV=production
           EOF
