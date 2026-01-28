@@ -31,7 +31,7 @@ jobs:
 
       - name: Build Backend Docker image
         run: |
-          docker build -t konekt/wa-sender:latest ./server
+          docker build --no-cache -t konekt/konekt:latest ./server
 
       - name: Validate resource limits
         run: |
@@ -82,7 +82,7 @@ jobs:
         run: |
           sleep 15
           echo "🔍 Vérifying services..."
-          docker ps | grep wa-sender
+          docker ps | grep konekt
 
       - name: Health check
         run: |
@@ -95,4 +95,4 @@ jobs:
       - name: Show container logs
         if: failure()
         run: |
-          docker logs wa-sender --tail 50 2>/dev/null || true
+          docker logs konekt --tail 50 2>/dev/null || true
