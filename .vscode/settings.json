@@ -1,0 +1,15 @@
+{
+    "sqltools.connections": [
+        {
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "nexteranga.com",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "konekt",
+            "database": "konektdb",
+            "username": "konektuser",
+            "password": "konektpass"
+        }
+    ]
+}
