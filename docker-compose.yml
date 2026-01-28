@@ -19,8 +19,8 @@ services:
 
   konekt:
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/Dockerfile
     container_name: konekt
     restart: unless-stopped
     mem_limit: 512m
