@@ -38,6 +38,7 @@ services:
       - wa-sessions:/app/.wwebjs_auth
       - konekt-back-logs:/app/logs
     networks:
+      - nginx-proxy
       - konekt-network
 
 
@@ -49,4 +50,6 @@ volumes:
 
 networks:
   konekt-network:
+    external: true
+  nginx-proxy:
     external: true
