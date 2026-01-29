@@ -529,6 +529,11 @@ app.post('/send', authenticateApiKey, async (req, res) => {
   }
 
   try {
+    // Vérification supplémentaire de l'état du client WhatsApp
+    if (!req.waClient || !req.waClient.info || !req.waClient.isReady) {
+      return res.status(503).json({ error: 'Instance WhatsApp non connectée ou non prête' });
+    }
+
     const jid = toJid(phone);
 
     if (mediaUrl) {

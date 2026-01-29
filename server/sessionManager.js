@@ -64,14 +64,17 @@ class SessionManager {
       await this.updateStatus(sessionName, 'CONNECTED');
     });
 
+
     client.on('ready', async () => {
       console.log(`Client ${sessionName} est prêt !`);
+      client.isReady = true;
       this.qrCodes.delete(sessionName);
       await this.updateStatus(sessionName, 'CONNECTED');
     });
 
     client.on('disconnected', async (reason) => {
       console.log(`Client ${sessionName} déconnecté: ${reason}`);
+      client.isReady = false;
       this.qrCodes.delete(sessionName);
       await this.updateStatus(sessionName, 'DISCONNECTED');
     });
