@@ -43,7 +43,7 @@ services:
     networks:
       - nginx-proxy
       - konekt-network
-      
+
 
 
 
