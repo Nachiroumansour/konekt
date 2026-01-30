@@ -13,6 +13,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Copy files to deployment directory
+        run: |
+          rsync -av --exclude='.git' --exclude='node_modules' --exclude='.env' ./ /srv/projects/konekt/
+
       - name: Create .env file
         run: |
           cat > .env <<EOF
