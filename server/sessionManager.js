@@ -28,12 +28,6 @@ class SessionManager {
         client.on('error', err => {
           console.error(`Client ${sessionName} error:`, err);
         });
-    if (this.sessions.has(sessionName)) {
-      return this.sessions.get(sessionName);
-    }
-
-    console.log(`Création du client WhatsApp pour ${sessionName}`);
-
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: sessionName,
@@ -67,6 +61,13 @@ class SessionManager {
     client.on('authenticated', async () => {
       console.log(`Client ${sessionName} authentifié !`);
       this.qrCodes.delete(sessionName);
+    // Ajout des listeners après l'initialisation de client
+    client.on('change_state', state => {
+      console.log(`Client ${sessionName} state:`, state);
+    });
+    client.on('error', err => {
+      console.error(`Client ${sessionName} error:`, err);
+    });
       // On marque comme connecté dès l'authentification pour une UX plus rapide
       await this.updateStatus(sessionName, 'CONNECTED');
     });
