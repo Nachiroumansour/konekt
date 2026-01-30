@@ -21,6 +21,13 @@ class SessionManager {
   }
 
   createSession(sessionName, apiKey) {
+        // Ajout de logs sur tous les événements pour debug
+        client.on('change_state', state => {
+          console.log(`Client ${sessionName} state:`, state);
+        });
+        client.on('error', err => {
+          console.error(`Client ${sessionName} error:`, err);
+        });
     if (this.sessions.has(sessionName)) {
       return this.sessions.get(sessionName);
     }
