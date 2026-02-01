@@ -5,7 +5,7 @@
   "main": "index.js",
   "license": "UNLICENSED",
   "scripts": {
-    "start": "find .wwebjs_auth -name 'Singleton*' -delete || true && node index.js"
+    "start": "rm -rf .wwebjs_auth/session-*/Singleton* .wwebjs_auth/session-*/Default/Singleton* && node index.js"
   },
   "dependencies": {
     "axios": "^1.13.2",

@@ -83,7 +83,7 @@ const initDb = async () => {
     if (res.rows.length === 0) {
        const hashed = await bcrypt.hash(adminPass, 10);
        await client.query(
-         'INSERT INTO wa_users (phone, email, password_hash, role, is_verified) VALUES ($1, $2, $3, $4, $5)',
+         'INSERT INTO wa_users (phone, email, password_hash, role, is_verified) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING',
          [adminPhone, 'admin@fitsen.sn', hashed, 'admin', true]
        );
        console.log('Admin user created (785947312)');
