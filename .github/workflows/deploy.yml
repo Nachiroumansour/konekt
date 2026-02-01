@@ -37,6 +37,9 @@ jobs:
       - name: Deploy with Docker Compose
         run: |
           docker compose --env-file .env build --no-cache konekt
+          # Force stop and remove existing container to avoid conflict
+          docker stop konekt || true
+          docker rm -f konekt || true
           docker compose --env-file .env up -d konekt
 
       - name: Wait for services to be healthy
