@@ -21,13 +21,6 @@ class SessionManager {
   }
 
   createSession(sessionName, apiKey) {
-        // Ajout de logs sur tous les événements pour debug
-        client.on('change_state', state => {
-          console.log(`Client ${sessionName} state:`, state);
-        });
-        client.on('error', err => {
-          console.error(`Client ${sessionName} error:`, err);
-        });
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: sessionName,
@@ -45,6 +38,14 @@ class SessionManager {
         ],
         headless: true, // or 'new'
       }
+    });
+
+    // Ajout de logs sur tous les événements pour debug
+    client.on('change_state', state => {
+      console.log(`Client ${sessionName} state:`, state);
+    });
+    client.on('error', err => {
+      console.error(`Client ${sessionName} error:`, err);
     });
 
     client.on('qr', async (qr) => {

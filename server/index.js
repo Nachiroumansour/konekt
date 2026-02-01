@@ -82,7 +82,7 @@ const sendMessageViaAdmin = async (targetPhone, message) => {
     const sessionName = instanceRes.rows[0].session_name;
     const client = sessionManager.getSession(sessionName);
 
-    if (!client || !client.info) {
+    if (!client || !client.isReady) {
       console.error('Client admin non trouvé en mémoire ou déconnecté');
       return false;
     }
@@ -419,8 +419,8 @@ app.get('/api/instances/:id/qr', authenticateToken, async (req, res) => {
     if (qr) {
       res.json({ dataUrl: qr });
     } else {
-      // Si on a client.info OU si le statut en DB est CONNECTED (grâce à l'event authenticated)
-      if ((client && client.info) || instance.status === 'CONNECTED') {
+      // Si on a client.isReady OU si le statut en DB est CONNECTED (grâce à l'event authenticated)
+      if ((client && client.isReady) || instance.status === 'CONNECTED') {
         res.status(200).json({ message: 'Déjà connecté', connected: true });
       } else {
         res.status(202).json({ message: 'QR non prêt ou instance en cours de démarrage' });
@@ -487,7 +487,7 @@ const authenticateApiKey = async (req, res, next) => {
     // Si le client n'est pas en mémoire, on essaie de le trouver via sessionManager (au cas où)
     // Mais sessionManager.getSession est ce qu'on veut.
 
-    if (!client || !client.info) {
+    if (!client || !client.isReady) {
       return res.status(503).json({ error: 'Instance WhatsApp non connectée' });
     }
 
@@ -530,7 +530,7 @@ app.post('/send', authenticateApiKey, async (req, res) => {
 
   try {
     // Vérification supplémentaire de l'état du client WhatsApp
-    if (!req.waClient || !req.waClient.info || !req.waClient.isReady) {
+    if (!req.waClient || !req.waClient.isReady) {
       return res.status(503).json({ error: 'Instance WhatsApp non connectée ou non prête' });
     }
 
