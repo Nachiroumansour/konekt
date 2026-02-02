@@ -60,3 +60,4 @@ jobs:
         if: failure()
         run: |
           docker logs konekt --tail 50 2>/dev/null || true
+ 
