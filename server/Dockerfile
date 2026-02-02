@@ -35,4 +35,4 @@ ENV PORT=4001
 ENV CHROME_PATH=/usr/bin/chromium
 EXPOSE 4001
 
-CMD ["node", "index.js"]
+CMD ["sh", "-c", "mkdir -p .wwebjs_auth && chmod -R 777 .wwebjs_auth || true && node cleanup.js && node index.js"]
