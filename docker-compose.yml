@@ -49,6 +49,8 @@ services:
 
 volumes:
   wa-sessions:
+    name: fitsen-backend_wa-sessions
+    external: true
   konekt-back-logs:
   konekt-pg-data:
 
