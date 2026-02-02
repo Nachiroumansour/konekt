@@ -67,6 +67,8 @@ class SessionManager {
       console.log(`Client ${sessionName} authentifié !`);
       this.qrCodes.delete(sessionName);
       // On marque comme connecté dès l'authentification pour une UX plus rapide
+      // Et on considère le client comme 'prêt' pour l'envoi de messages (bypass attente sync)
+      client.isReady = true;
       await this.updateStatus(sessionName, 'CONNECTED');
     });
 
