@@ -17,6 +17,8 @@ class SessionManager {
     for (const instance of res.rows) {
       console.log(`Démarrage de la session: ${instance.session_name}`);
       this.createSession(instance.session_name, instance.api_key);
+      // Stagger start to prevent CPU/Memory spikes
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
 
@@ -28,6 +30,7 @@ class SessionManager {
       }),
       puppeteer: {
         executablePath: process.env.CHROME_PATH || undefined,
+        protocolTimeout: 120000, // Increase timeout to 2 minutes
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
