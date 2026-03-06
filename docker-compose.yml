@@ -1,61 +1,26 @@
-version: "3.9"
-
-
 services:
-  postgres:
-    image: postgres:15
-    container_name: konekt-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: konektdb
-      POSTGRES_USER: konektuser
-      POSTGRES_PASSWORD: konektpass
-    ports:
-      - "5432:5432"
-    volumes:
-      - konekt-pg-data:/var/lib/postgresql/data
-    networks:
-      - konekt-network
-
   konekt:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
+    image: ghcr.io/satoshijr1/konekt:latest
     container_name: konekt
     restart: unless-stopped
     mem_limit: 1024m
     cpus: 1.0
     environment:
       - PORT=4001
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=konektdb
-      - DB_USER=konektuser
-      - DB_PASSWORD=konektpass
+      - DATABASE_URL=postgresql://fitsen:Sall&1844@postgres:5432/konekt
+      - JWT_SECRET=konekt-jwt-secret-2026-change-me
+      - ADMIN_PHONE=221785947312
       - VIRTUAL_HOST=konekt.nexteranga.com
       - LETSENCRYPT_HOST=konekt.nexteranga.com
       - LETSENCRYPT_EMAIL=skhadimsall@gmail.com
-    depends_on:
-      - postgres
     volumes:
       - wa-sessions:/app/.wwebjs_auth
-      - konekt-back-logs:/app/logs
     networks:
       - nginx-proxy
-      - konekt-network
-
-
-
 
 volumes:
   wa-sessions:
-    name: fitsen-backend_wa-sessions
-    external: true
-  konekt-back-logs:
-  konekt-pg-data:
 
 networks:
-  konekt-network:
-    external: true
   nginx-proxy:
     external: true
