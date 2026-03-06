@@ -3,12 +3,11 @@ import pg from 'pg';
 const { Pool } = pg;
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'fitsen-postgresql',
-  port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  connectionString: process.env.DATABASE_URL,
 });
+
+const ADMIN_PHONE = process.env.ADMIN_PHONE || '221785947312';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Sall&0710';
 
 // Initialisation des tables
 const initDb = async () => {
@@ -26,22 +25,12 @@ const initDb = async () => {
         role VARCHAR(20) DEFAULT 'user',
         is_verified BOOLEAN DEFAULT false,
         verification_code VARCHAR(10),
+        subscription_plan VARCHAR(20) DEFAULT 'free',
+        message_count INTEGER DEFAULT 0,
+        message_limit INTEGER DEFAULT 25,
+        subscription_end TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-    `);
-
-    // Migration: Ajout des colonnes si elles manquent (pour les déploiements existants)
-    await client.query(`
-      ALTER TABLE wa_users
-      ADD COLUMN IF NOT EXISTS phone VARCHAR(50) UNIQUE,
-      ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user',
-      ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false,
-      ADD COLUMN IF NOT EXISTS verification_code VARCHAR(10),
-      ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(20) DEFAULT 'free',
-      ADD COLUMN IF NOT EXISTS message_count INTEGER DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS message_limit INTEGER DEFAULT 25,
-      ADD COLUMN IF NOT EXISTS subscription_end TIMESTAMP,
-      ALTER COLUMN email DROP NOT NULL;
     `);
 
     // Table Instances WhatsApp
@@ -57,12 +46,6 @@ const initDb = async () => {
       );
     `);
 
-    // Migration: Ajout de display_name si manquant
-    await client.query(`
-      ALTER TABLE wa_instances
-      ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);
-    `);
-
     // Table Historique des Messages
     await client.query(`
       CREATE TABLE IF NOT EXISTS wa_messages (
@@ -76,17 +59,14 @@ const initDb = async () => {
     `);
 
     // Seed Admin User
-    const adminPhone = '785947312';
-    const adminPass = 'Sall&0710';
-
-    const res = await client.query('SELECT id FROM wa_users WHERE phone = $1', [adminPhone]);
+    const res = await client.query('SELECT id FROM wa_users WHERE phone = $1', [ADMIN_PHONE]);
     if (res.rows.length === 0) {
-       const hashed = await bcrypt.hash(adminPass, 10);
-       await client.query(
-         'INSERT INTO wa_users (phone, email, password_hash, role, is_verified) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING',
-         [adminPhone, 'admin@fitsen.sn', hashed, 'admin', true]
-       );
-       console.log('Admin user created (785947312)');
+      const hashed = await bcrypt.hash(ADMIN_PASSWORD, 10);
+      await client.query(
+        'INSERT INTO wa_users (phone, email, password_hash, role, is_verified) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+        [ADMIN_PHONE, 'admin@konekt.sn', hashed, 'admin', true]
+      );
+      console.log(`Admin user created (${ADMIN_PHONE})`);
     }
 
     console.log('Tables initialisées avec succès.');
