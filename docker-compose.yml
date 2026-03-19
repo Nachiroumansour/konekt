@@ -1,18 +1,19 @@
 services:
   konekt:
-    image: ghcr.io/satoshijr1/konekt:latest
+    image: ghcr.io/nachiroumansour/konekt:latest
     container_name: konekt
     restart: unless-stopped
     mem_limit: 1024m
     cpus: 1.0
     environment:
       - PORT=4001
-      - DATABASE_URL=postgresql://fitsen:Sall&1844@postgres:5432/konekt
-      - JWT_SECRET=konekt-jwt-secret-2026-change-me
-      - ADMIN_PHONE=221785947312
-      - VIRTUAL_HOST=konekt.nexteranga.com
-      - LETSENCRYPT_HOST=konekt.nexteranga.com
-      - LETSENCRYPT_EMAIL=skhadimsall@gmail.com
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_PHONE=${ADMIN_PHONE}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - VIRTUAL_HOST=konekt.livelink.store
+      - LETSENCRYPT_HOST=konekt.livelink.store
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
     volumes:
       - wa-sessions:/app/.wwebjs_auth
     networks:

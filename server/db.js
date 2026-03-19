@@ -6,8 +6,8 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-const ADMIN_PHONE = process.env.ADMIN_PHONE || '221785947312';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Sall&0710';
+const ADMIN_PHONE = process.env.ADMIN_PHONE || '221771842787';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme-admin-2026';
 
 // Initialisation des tables
 const initDb = async () => {

@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/satoshijr1/konekt
+  IMAGE_NAME: ghcr.io/nachiroumansour/konekt
 
 jobs:
   build:
