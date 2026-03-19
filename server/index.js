@@ -459,7 +459,7 @@ const authenticateApiKey = async (req, res, next) => {
   try {
     // 1. Vérifier la clé API et récupérer les infos utilisateur
     const result = await pool.query(`
-      SELECT u.id, u.phone, u.subscription_plan, u.message_count, u.message_limit, i.session_name
+      SELECT u.id, u.phone, u.role, u.subscription_plan, u.message_count, u.message_limit, i.session_name
       FROM wa_instances i
       JOIN wa_users u ON i.user_id = u.id
       WHERE i.api_key = $1
@@ -472,13 +472,15 @@ const authenticateApiKey = async (req, res, next) => {
     const user = result.rows[0];
     const sessionName = user.session_name;
 
-    // 2. Vérifier les limites (Système de Crédits)
-    const limit = user.message_limit || 25; // Default fallback
-    if (user.message_count >= limit) {
-      return res.status(402).json({
-        error: `Limite de messages atteinte (${user.message_count}/${limit}). Veuillez recharger vos crédits.`,
-        code: 'LIMIT_REACHED'
-      });
+    // 2. Vérifier les limites (Système de Crédits) — admins exemptés
+    if (user.role !== 'admin') {
+      const limit = user.message_limit || 25;
+      if (user.message_count >= limit) {
+        return res.status(402).json({
+          error: `Limite de messages atteinte (${user.message_count}/${limit}). Veuillez recharger vos crédits.`,
+          code: 'LIMIT_REACHED'
+        });
+      }
     }
 
     // 3. Récupérer le client WhatsApp
@@ -491,13 +493,13 @@ const authenticateApiKey = async (req, res, next) => {
       return res.status(503).json({ error: 'Instance WhatsApp non connectée' });
     }
 
-    // Notification seuil bas (ex: reste 5 messages)
-    const remaining = limit - user.message_count;
-    if (remaining === 5) {
-      // Send warning asynchronously to the registered user phone
-      // Note: This assumes the user's registered phone is a valid WhatsApp number
-      client.sendMessage(toJid(user.phone || ''), `⚠️ *Alerte Crédits Konekt*\n\nIl ne vous reste que *5 messages*.\nPensez à recharger votre compte pour éviter toute interruption.`)
-        .catch(err => console.error('Failed to send low balance warning', err));
+    // Notification seuil bas (ex: reste 5 messages) — pas pour les admins
+    if (user.role !== 'admin') {
+      const remaining = (user.message_limit || 25) - user.message_count;
+      if (remaining === 5) {
+        client.sendMessage(toJid(user.phone || ''), `⚠️ *Alerte Crédits Konekt*\n\nIl ne vous reste que *5 messages*.\nPensez à recharger votre compte pour éviter toute interruption.`)
+          .catch(err => console.error('Failed to send low balance warning', err));
+      }
     }
 
     req.waClient = client;
@@ -519,13 +521,15 @@ app.post('/send', authenticateApiKey, async (req, res) => {
   if (!phone || (!message && !mediaUrl)) return res.status(400).json({ error: 'phone and (message or mediaUrl) required' });
 
   const cost = mediaUrl ? 3 : 1;
-  const limit = req.waUser.message_limit || 25;
 
-  if (req.waUser.message_count + cost > limit) {
-    return res.status(402).json({
-      error: `Crédits insuffisants. Coût: ${cost}, Reste: ${limit - req.waUser.message_count}`,
-      code: 'LIMIT_REACHED'
-    });
+  if (req.waUser.role !== 'admin') {
+    const limit = req.waUser.message_limit || 25;
+    if (req.waUser.message_count + cost > limit) {
+      return res.status(402).json({
+        error: `Crédits insuffisants. Coût: ${cost}, Reste: ${limit - req.waUser.message_count}`,
+        code: 'LIMIT_REACHED'
+      });
+    }
   }
 
   try {
