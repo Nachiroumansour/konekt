@@ -86,7 +86,10 @@ jobs:
             echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u ${{ secrets.GHCR_USER }} --password-stdin
 
             cd /srv/projects/konekt
-            docker compose pull konekt
-            docker compose up -d --force-recreate --remove-orphans
-            docker compose ps
+            cat > .env.deploy <<EOF
+            IMAGE_TAG=${{ github.sha }}
+            EOF
+            docker compose --env-file .env.deploy pull konekt
+            docker compose --env-file .env.deploy up -d --force-recreate --remove-orphans
+            docker compose --env-file .env.deploy ps
             docker image prune -f

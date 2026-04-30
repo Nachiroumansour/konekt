@@ -1,6 +1,6 @@
 services:
   konekt:
-    image: ghcr.io/nachiroumansour/konekt:latest
+    image: ghcr.io/nachiroumansour/konekt:${IMAGE_TAG:-latest}
     container_name: konekt
     restart: unless-stopped
     mem_limit: 1024m
