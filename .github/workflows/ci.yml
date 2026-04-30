@@ -86,6 +86,7 @@ jobs:
             echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u ${{ secrets.GHCR_USER }} --password-stdin
 
             cd /srv/projects/konekt
-            docker compose pull
-            docker compose up -d
+            docker compose pull konekt
+            docker compose up -d --force-recreate --remove-orphans
+            docker compose ps
             docker image prune -f
