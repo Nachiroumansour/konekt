@@ -39,6 +39,25 @@ function toJid(phone) {
   return `${digits}@c.us`;
 }
 
+async function resolveRecipient(client, phone) {
+  const digits = String(phone || '').replace(/[^\d]/g, '');
+
+  if (!digits) {
+    const error = new Error('Numéro destinataire invalide');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const numberId = await client.getNumberId(digits);
+  if (!numberId?._serialized) {
+    const error = new Error('Numéro WhatsApp introuvable ou invalide');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return numberId._serialized;
+}
+
 async function processImage(url) {
   try {
     const response = await axios.get(url, { responseType: 'arraybuffer' });
@@ -88,7 +107,8 @@ const sendMessageViaAdmin = async (targetPhone, message) => {
     }
 
     // 3. Envoyer le message
-    await client.sendMessage(toJid(targetPhone), message);
+    const recipientJid = await resolveRecipient(client, targetPhone);
+    await client.sendMessage(recipientJid, message);
     return true;
 
   } catch (err) {
@@ -538,7 +558,7 @@ app.post('/send', authenticateApiKey, async (req, res) => {
       return res.status(503).json({ error: 'Instance WhatsApp non connectée ou non prête' });
     }
 
-    const jid = toJid(phone);
+    const jid = await resolveRecipient(req.waClient, phone);
 
     if (mediaUrl) {
       const media = await processImage(mediaUrl);
@@ -557,7 +577,7 @@ app.post('/send', authenticateApiKey, async (req, res) => {
 
     res.json({ ok: true, cost });
   } catch (e) {
-    res.status(502).json({ error: 'wa-send-failed', detail: String(e?.message || e) });
+    res.status(e?.statusCode || 502).json({ error: 'wa-send-failed', detail: String(e?.message || e) });
   }
 });
 
@@ -589,7 +609,7 @@ app.post('/send-batch', authenticateApiKey, async (req, res) => {
     }
 
     try {
-      const jid = toJid(phone);
+      const jid = await resolveRecipient(req.waClient, phone);
       if (media) {
         await req.waClient.sendMessage(jid, media, { caption: message || '' });
       } else {
@@ -619,11 +639,12 @@ app.post('/send-otp', authenticateApiKey, async (req, res) => {
   const message = `🔐 *Code de vérification ${businessName}*\n\nVotre code OTP est :\n*${formattedCode}*\n\n⚠️ *Important :*\n• Ce code expire dans 15 minutes\n• Ne partagez jamais ce code\n\n--\n${businessName}`;
 
   try {
-    await req.waClient.sendMessage(toJid(phone), message);
+    const jid = await resolveRecipient(req.waClient, phone);
+    await req.waClient.sendMessage(jid, message);
     await incrementMessageCount(req.waUser.id);
     res.json({ ok: true });
   } catch (e) {
-    res.status(502).json({ error: 'wa-send-failed', detail: String(e?.message || e) });
+    res.status(e?.statusCode || 502).json({ error: 'wa-send-failed', detail: String(e?.message || e) });
   }
 });
 
