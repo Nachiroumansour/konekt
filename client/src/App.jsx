@@ -131,7 +131,7 @@ function Landing() {
                   </div>
                   <div className="ml-4 text-xs text-slate-500 font-mono flex items-center gap-2">
                     <span className="text-emerald-500">POST</span>
-                    konekt.nexteranga.com/send
+                    konekt.livelink.store/send
                   </div>
                 </div>
 

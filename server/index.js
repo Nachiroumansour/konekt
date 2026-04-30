@@ -448,7 +448,7 @@ app.get('/api/messages', authenticateToken, async (req, res) => {
 // --- Routes Publiques d'Envoi (API) ---
 
 const authenticateApiKey = async (req, res, next) => {
-  const apiKey = req.header('X-WA-SECRET');
+  const apiKey = (req.header('X-WA-SECRET') || '').trim();
 
   if (WA_SECRET_LEGACY && apiKey === WA_SECRET_LEGACY) {
     return res.status(401).json({ error: 'Veuillez utiliser votre nouvelle API Key' });

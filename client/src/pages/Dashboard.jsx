@@ -150,10 +150,33 @@ export default function Dashboard() {
     setTimeout(() => clearInterval(interval), 60000);
   };
 
-  const copyApiKey = (key) => {
-    navigator.clipboard.writeText(key);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const fallbackCopyText = (text) => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'absolute';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return copied;
+  };
+
+  const copyApiKey = async (key) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(key);
+      } else if (!fallbackCopyText(key)) {
+        throw new Error('Clipboard unavailable');
+      }
+
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy API key', err);
+      alert('Copie impossible. Copiez la clé affichée manuellement.');
+    }
   };
 
   const logout = () => {

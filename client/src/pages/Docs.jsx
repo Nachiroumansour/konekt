@@ -47,6 +47,10 @@ export default function Docs() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('curl');
 
+  const apiBaseUrl = typeof window !== 'undefined'
+    ? window.location.origin
+    : 'https://konekt.livelink.store';
+
   // Test Console State
   const [testApiKey, setTestApiKey] = useState('');
   const [testPhone, setTestPhone] = useState('');
@@ -63,7 +67,7 @@ export default function Docs() {
     setTestResponse(null);
 
     try {
-      const res = await fetch('https://konekt.nexteranga.com/send', {
+      const res = await fetch(`${apiBaseUrl}/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -90,13 +94,13 @@ export default function Docs() {
   };
 
   const codeExamples = {
-    curl: `curl -X POST https://konekt.nexteranga.com/send \\
+    curl: `curl -X POST ${apiBaseUrl}/send \\
   -H "Content-Type: application/json" \\
   -H "X-WA-SECRET: YOUR_API_KEY" \\
   -d '{"phone": "221770000000", "message": "Hello from Konekt!", "mediaUrl": "https://example.com/image.jpg"}'`,
     node: `const axios = require('axios');
 
-await axios.post('https://konekt.nexteranga.com/send', {
+await axios.post('${apiBaseUrl}/send', {
   phone: '221770000000',
   message: 'Hello from Konekt!',
   mediaUrl: 'https://example.com/image.jpg' // Optionnel
@@ -107,7 +111,7 @@ await axios.post('https://konekt.nexteranga.com/send', {
 });`,
     python: `import requests
 
-url = "https://konekt.nexteranga.com/send"
+url = "${apiBaseUrl}/send"
 payload = {
     "phone": "221770000000",
     "message": "Hello from Konekt!",
@@ -124,7 +128,7 @@ print(response.text)`,
 $curl = curl_init();
 
 curl_setopt_array($curl, array(
-  CURLOPT_URL => 'https://konekt.nexteranga.com/send',
+  CURLOPT_URL => '${apiBaseUrl}/send',
   CURLOPT_RETURNTRANSFER => true,
   CURLOPT_CUSTOMREQUEST => 'POST',
   CURLOPT_POSTFIELDS => json_encode([
@@ -141,7 +145,7 @@ curl_setopt_array($curl, array(
 $response = curl_exec($curl);
 curl_close($curl);
 echo $response;`,
-    batchCurl: `curl -X POST https://konekt.nexteranga.com/send-batch \\
+    batchCurl: `curl -X POST ${apiBaseUrl}/send-batch \\
   -H "Content-Type: application/json" \\
   -H "X-WA-SECRET: YOUR_API_KEY" \\
   -d '{
@@ -150,7 +154,7 @@ echo $response;`,
   }'`,
     batchNode: `const axios = require('axios');
 
-await axios.post('https://konekt.nexteranga.com/send-batch', {
+await axios.post('${apiBaseUrl}/send-batch', {
   numbers: ['221770000000', '221770000001'],
   message: 'Votre message de diffusion ici'
 }, {

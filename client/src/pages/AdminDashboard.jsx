@@ -79,11 +79,34 @@ export default function AdminDashboard() {
     setToast({ message, type });
   };
 
-  const copyApiKey = (key) => {
-    navigator.clipboard.writeText(key);
-    setCopiedKey(key);
-    showToast('Clé API copiée !');
-    setTimeout(() => setCopiedKey(null), 2000);
+  const fallbackCopyText = (text) => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'absolute';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return copied;
+  };
+
+  const copyApiKey = async (key) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(key);
+      } else if (!fallbackCopyText(key)) {
+        throw new Error('Clipboard unavailable');
+      }
+
+      setCopiedKey(key);
+      showToast('Clé API copiée !');
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy API key', err);
+      showToast('Copie impossible. Copiez la clé affichée manuellement.', 'error');
+    }
   };
 
   useEffect(() => {
@@ -498,6 +521,7 @@ export default function AdminDashboard() {
                             API Key
                           </button>
                         </div>
+                        <p className="mt-1 text-xs font-mono text-slate-500 break-all">{instance.api_key}</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
