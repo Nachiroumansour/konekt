@@ -317,7 +317,7 @@ await axios.post('${apiBaseUrl}/send-batch', {
 
               <div className="flex items-center gap-3 mb-4">
                 <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 font-mono font-bold rounded">POST</span>
-                <code className="text-slate-200">https://konekt.nexteranga.com/send</code>
+                <code className="text-slate-200">{`${apiBaseUrl}/send`}</code>
               </div>
 
               <h4 className="text-white font-bold mb-2 mt-6">Paramètres (JSON)</h4>
@@ -354,7 +354,7 @@ await axios.post('${apiBaseUrl}/send-batch', {
 
               <div className="flex items-center gap-3 mb-4">
                 <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 font-mono font-bold rounded">POST</span>
-                <code className="text-slate-200">https://konekt.nexteranga.com/send-batch</code>
+                <code className="text-slate-200">{`${apiBaseUrl}/send-batch`}</code>
               </div>
 
               <h4 className="text-white font-bold mb-2 mt-6">Paramètres (JSON)</h4>
@@ -378,11 +378,11 @@ await axios.post('${apiBaseUrl}/send-batch', {
 
               <div className="flex items-center gap-3 mb-4">
                 <span className="px-3 py-1 bg-blue-500/20 text-blue-400 font-mono font-bold rounded">GET</span>
-                <code className="text-slate-200">https://konekt.nexteranga.com/api/messages</code>
+                <code className="text-slate-200">{`${apiBaseUrl}/api/messages`}</code>
               </div>
 
               <div className="mb-6">
-                <CodeBlock language="bash" code={`curl -X GET https://konekt.nexteranga.com/api/messages \\
+                <CodeBlock language="bash" code={`curl -X GET ${apiBaseUrl}/api/messages \
   -H "X-WA-SECRET: YOUR_API_KEY"`} />
               </div>
             </Section>
