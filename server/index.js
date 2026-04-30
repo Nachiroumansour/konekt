@@ -58,6 +58,21 @@ async function resolveRecipient(client, phone) {
   return numberId._serialized;
 }
 
+async function assertClientReady(client) {
+  if (!client || !client.isReady) {
+    const error = new Error('Instance WhatsApp non connectée ou non prête');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const state = await client.getState().catch(() => null);
+  if (state !== 'CONNECTED') {
+    const error = new Error(`Instance WhatsApp non disponible (${state || 'UNKNOWN'})`);
+    error.statusCode = 503;
+    throw error;
+  }
+}
+
 async function processImage(url) {
   try {
     const response = await axios.get(url, { responseType: 'arraybuffer' });
@@ -509,9 +524,7 @@ const authenticateApiKey = async (req, res, next) => {
     // Si le client n'est pas en mémoire, on essaie de le trouver via sessionManager (au cas où)
     // Mais sessionManager.getSession est ce qu'on veut.
 
-    if (!client || !client.isReady) {
-      return res.status(503).json({ error: 'Instance WhatsApp non connectée' });
-    }
+    await assertClientReady(client);
 
     // Notification seuil bas (ex: reste 5 messages) — pas pour les admins
     if (user.role !== 'admin') {
@@ -554,9 +567,7 @@ app.post('/send', authenticateApiKey, async (req, res) => {
 
   try {
     // Vérification supplémentaire de l'état du client WhatsApp
-    if (!req.waClient || !req.waClient.isReady) {
-      return res.status(503).json({ error: 'Instance WhatsApp non connectée ou non prête' });
-    }
+    await assertClientReady(req.waClient);
 
     const jid = await resolveRecipient(req.waClient, phone);
 
