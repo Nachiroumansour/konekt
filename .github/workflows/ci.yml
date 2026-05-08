@@ -86,10 +86,14 @@ jobs:
             echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u ${{ secrets.GHCR_USER }} --password-stdin
 
             cd /srv/projects/konekt
-            cat > .env.deploy <<EOF
-            IMAGE_TAG=${{ github.sha }}
-            EOF
-            docker compose --env-file .env.deploy pull konekt
-            docker compose --env-file .env.deploy up -d --force-recreate --remove-orphans
-            docker compose --env-file .env.deploy ps
+            test -f .env
+            cp .env .env.runtime
+            printf '\nIMAGE_TAG=%s\n' '${{ github.sha }}' >> .env.runtime
+            env -u DATABASE_URL -u JWT_SECRET -u ADMIN_PHONE -u ADMIN_PASSWORD -u LETSENCRYPT_EMAIL -u IMAGE_TAG -u KONEKT_IMAGE \
+              docker compose --env-file .env.runtime pull konekt
+            env -u DATABASE_URL -u JWT_SECRET -u ADMIN_PHONE -u ADMIN_PASSWORD -u LETSENCRYPT_EMAIL -u IMAGE_TAG -u KONEKT_IMAGE \
+              docker compose --env-file .env.runtime up -d --force-recreate --remove-orphans
+            env -u DATABASE_URL -u JWT_SECRET -u ADMIN_PHONE -u ADMIN_PASSWORD -u LETSENCRYPT_EMAIL -u IMAGE_TAG -u KONEKT_IMAGE \
+              docker compose --env-file .env.runtime ps
+            rm -f .env.runtime
             docker image prune -f
