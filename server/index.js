@@ -454,9 +454,11 @@ app.get('/api/instances/:id/qr', authenticateToken, async (req, res) => {
     if (qr) {
       res.json({ dataUrl: qr });
     } else {
-      // Si on a client.isReady OU si le statut en DB est CONNECTED (grâce à l'event authenticated)
       if ((client && client.isReady) || instance.status === 'CONNECTED') {
         res.status(200).json({ message: 'Déjà connecté', connected: true });
+      } else if (instance.status === 'AUTHENTICATED') {
+        // Session reconnectée via LocalAuth, en attente de l'événement ready
+        res.status(202).json({ message: 'Authentification réussie, connexion en cours...', connecting: true });
       } else {
         res.status(202).json({ message: 'QR non prêt ou instance en cours de démarrage' });
       }

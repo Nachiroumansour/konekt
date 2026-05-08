@@ -191,6 +191,8 @@ export default function AdminDashboard() {
           fetchData();
           // Close modal after 2 seconds
           setTimeout(() => setSelectedInstance(null), 2000);
+        } else if (data.connecting) {
+          setConnectionStatus('connecting');
         } else if (data.dataUrl) {
           setQrCode(data.dataUrl);
           setConnectionStatus('qr');
@@ -200,8 +202,8 @@ export default function AdminDashboard() {
       }
     }, 2000);
 
-    // Stop polling after 60s
-    setTimeout(() => clearInterval(interval), 60000);
+    // Stop polling after 3 minutes
+    setTimeout(() => clearInterval(interval), 180000);
   };
 
   const confirmDelete = async () => {
@@ -634,7 +636,7 @@ export default function AdminDashboard() {
                       <div className="w-64 h-64 flex items-center justify-center bg-slate-50 rounded-lg">
                         <div className="flex flex-col items-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mb-2"></div>
-                          <span className="text-xs text-slate-400">Génération...</span>
+                          <span className="text-xs text-slate-400">{connectionStatus === 'connecting' ? 'Connexion en cours...' : 'Génération...'}</span>
                         </div>
                       </div>
                     )}
