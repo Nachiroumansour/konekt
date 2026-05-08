@@ -541,6 +541,10 @@ const authenticateApiKey = async (req, res, next) => {
 
   } catch (err) {
     console.error(err);
+    if (err?.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+
     return res.status(500).json({ error: 'Erreur vérification API Key' });
   }
 };
