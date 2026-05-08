@@ -64,10 +64,12 @@ async function assertClientReady(client) {
     error.statusCode = 503;
     throw error;
   }
-
+  // client.isReady est mis à true uniquement par l'événement 'ready' — on s'y fie.
+  // getState() peut retourner UNKNOWN brièvement après ready (loading_screen encore en cours),
+  // donc on ne bloque que si la déconnexion est explicite.
   const state = await client.getState().catch(() => null);
-  if (state !== 'CONNECTED') {
-    const error = new Error(`Instance WhatsApp non disponible (${state || 'UNKNOWN'})`);
+  if (state === 'CONFLICT' || state === 'UNLAUNCHED') {
+    const error = new Error(`Instance WhatsApp non disponible (${state})`);
     error.statusCode = 503;
     throw error;
   }
