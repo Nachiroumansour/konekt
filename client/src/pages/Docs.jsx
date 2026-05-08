@@ -76,7 +76,18 @@ export default function Docs() {
         body: JSON.stringify({ phone: testPhone, message: testMessage, mediaUrl: testMediaUrl })
       });
 
-      const data = await res.json();
+      const rawBody = await res.text();
+      let data;
+
+      try {
+        data = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        data = {
+          error: rawBody || 'Réponse non JSON reçue',
+          contentType: res.headers.get('content-type') || 'unknown'
+        };
+      }
+
       setTestResponse({ ok: res.ok, status: res.status, data });
     } catch (err) {
       setTestResponse({ ok: false, status: 'Error', data: { error: err.message } });
@@ -460,7 +471,7 @@ await axios.post('${apiBaseUrl}/send-batch', {
                     {testResponse ? (
                       <div className={testResponse.ok ? 'text-emerald-400' : 'text-red-400'}>
                         <div className="mb-2">Status: {testResponse.status}</div>
-                        <pre>{JSON.stringify(testResponse.data, null, 2)}</pre>
+                        <pre className="whitespace-pre-wrap break-words">{JSON.stringify(testResponse.data, null, 2)}</pre>
                       </div>
                     ) : (
                       <div className="text-slate-600 italic">
