@@ -23,6 +23,7 @@ app.set('trust proxy', 1); // Trust first proxy (Nginx)
 const PORT = process.env.PORT || 4001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-change-me';
 const WA_SECRET_LEGACY = process.env.WA_SECRET;
+const WA_SEND_TIMEOUT_MS = Number(process.env.WA_SEND_TIMEOUT_MS || 25000);
 
 app.use(helmet({
   contentSecurityPolicy: false
@@ -73,6 +74,19 @@ async function assertClientReady(client) {
     error.statusCode = 503;
     throw error;
   }
+}
+
+async function sendMessageWithTimeout(client, jid, content, options = undefined) {
+  const sendPromise = client.sendMessage(jid, content, options);
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => {
+      const error = new Error(`Timeout WhatsApp après ${WA_SEND_TIMEOUT_MS}ms`);
+      error.statusCode = 504;
+      reject(error);
+    }, WA_SEND_TIMEOUT_MS);
+  });
+
+  return Promise.race([sendPromise, timeoutPromise]);
 }
 
 async function processImage(url) {
@@ -581,9 +595,9 @@ app.post('/send', authenticateApiKey, async (req, res) => {
 
     if (mediaUrl) {
       const media = await processImage(mediaUrl);
-      await req.waClient.sendMessage(jid, media, { caption: message || '' });
+      await sendMessageWithTimeout(req.waClient, jid, media, { caption: message || '' });
     } else {
-      await req.waClient.sendMessage(jid, message);
+      await sendMessageWithTimeout(req.waClient, jid, message);
     }
 
     await incrementMessageCount(req.waUser.id, cost);
@@ -630,9 +644,9 @@ app.post('/send-batch', authenticateApiKey, async (req, res) => {
     try {
       const jid = await resolveRecipient(req.waClient, phone);
       if (media) {
-        await req.waClient.sendMessage(jid, media, { caption: message || '' });
+        await sendMessageWithTimeout(req.waClient, jid, media, { caption: message || '' });
       } else {
-        await req.waClient.sendMessage(jid, message);
+        await sendMessageWithTimeout(req.waClient, jid, message);
       }
 
       await incrementMessageCount(req.waUser.id, cost);
@@ -659,7 +673,7 @@ app.post('/send-otp', authenticateApiKey, async (req, res) => {
 
   try {
     const jid = await resolveRecipient(req.waClient, phone);
-    await req.waClient.sendMessage(jid, message);
+    await sendMessageWithTimeout(req.waClient, jid, message);
     await incrementMessageCount(req.waUser.id);
     res.json({ ok: true });
   } catch (e) {
