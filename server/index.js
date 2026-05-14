@@ -59,12 +59,53 @@ async function resolveRecipient(client, phone) {
   return numberId._serialized;
 }
 
+async function waitForClientReady(client, timeoutMs = 15000) {
+  if (!client) return false;
+  if (client.isReady) return true;
+
+  return new Promise((resolve) => {
+    const onReady = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    const onDisconnected = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(Boolean(client.isReady));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      client.off('ready', onReady);
+      client.off('disconnected', onDisconnected);
+    };
+
+    client.on('ready', onReady);
+    client.on('disconnected', onDisconnected);
+  });
+}
+
 async function assertClientReady(client) {
-  if (!client || !client.isReady) {
+  if (!client) {
     const error = new Error('Instance WhatsApp non connectée ou non prête');
     error.statusCode = 503;
     throw error;
   }
+
+  if (!client.isReady) {
+    const becameReady = await waitForClientReady(client, 15000);
+    if (!becameReady) {
+      const error = new Error('Instance WhatsApp en cours de démarrage. Réessayez dans quelques secondes.');
+      error.statusCode = 503;
+      throw error;
+    }
+  }
+
   // client.isReady est mis à true uniquement par l'événement 'ready' — on s'y fie.
   // getState() peut retourner UNKNOWN brièvement après ready (loading_screen encore en cours),
   // donc on ne bloque que si la déconnexion est explicite.

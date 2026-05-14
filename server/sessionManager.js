@@ -43,6 +43,8 @@ class SessionManager {
       }
     });
 
+    client.isReady = false;
+
     // Ajout de logs sur tous les événements pour debug
     client.on('loading_screen', (percent, message) => {
       console.log(`Chargement ${sessionName}: ${percent}% - ${message}`);
@@ -53,6 +55,13 @@ class SessionManager {
     });
     client.on('error', err => {
       console.error(`Client ${sessionName} error:`, err);
+    });
+
+    client.on('auth_failure', async (msg) => {
+      console.error(`Client ${sessionName} auth_failure:`, msg);
+      client.isReady = false;
+      this.qrCodes.delete(sessionName);
+      await this.updateStatus(sessionName, 'DISCONNECTED');
     });
 
     client.on('qr', async (qr) => {
@@ -88,8 +97,10 @@ class SessionManager {
       await this.updateStatus(sessionName, 'DISCONNECTED');
     });
 
-    client.initialize().catch(err => {
+    client.initialize().catch(async (err) => {
       console.error(`Erreur init client ${sessionName}:`, err);
+      client.isReady = false;
+      await this.updateStatus(sessionName, 'DISCONNECTED');
     });
 
     this.sessions.set(sessionName, client);
