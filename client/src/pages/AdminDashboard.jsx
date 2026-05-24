@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Copy, LogOut, MessageSquare, Plus, QrCode, Server, Smartphone, Trash2, User, X } from 'lucide-react';
+import { AlertCircle, Check, Copy, LogOut, MessageSquare, Plus, QrCode, RefreshCw, Server, Smartphone, Trash2, User, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -204,6 +204,26 @@ export default function AdminDashboard() {
 
     // Stop polling after 3 minutes
     setTimeout(() => clearInterval(interval), 180000);
+  };
+
+  const reconnectInstance = async (instance) => {
+    try {
+      const res = await fetch(`/api/instances/${instance.id}/reconnect`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        showToast('Reconnect demandé. Vérifiez le statut dans quelques secondes.');
+        fetchData();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Erreur lors de la reconnexion', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Erreur réseau lors de la reconnexion', 'error');
+    }
   };
 
   const confirmDelete = async () => {
@@ -534,6 +554,15 @@ export default function AdminDashboard() {
                       >
                         <QrCode className="h-4 w-4" />
                       </button>
+                      {instance.status === 'CONNECTED' && (
+                        <button
+                          onClick={() => reconnectInstance(instance)}
+                          className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          title="Reconnecter"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </button>
+                      )}
                       <button
                         onClick={() => deleteInstance(instance.id)}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"

@@ -59,7 +59,7 @@ async function resolveRecipient(client, phone) {
   return numberId._serialized;
 }
 
-async function waitForClientReady(client, timeoutMs = 30000) {
+async function waitForClientReady(client, timeoutMs = 15000) {
   if (!client) return false;
   if (client.isReady) return true;
 
@@ -98,7 +98,7 @@ async function assertClientReady(client) {
   }
 
   if (!client.isReady) {
-    const becameReady = await waitForClientReady(client, 15000);
+    const becameReady = await waitForClientReady(client, 30000);
     if (!becameReady) {
       const error = new Error('Instance WhatsApp en cours de démarrage. Réessayez dans quelques secondes.');
       error.statusCode = 503;
@@ -118,37 +118,21 @@ async function assertClientReady(client) {
 }
 
 async function sendMessageWithTimeout(client, jid, content, options = undefined) {
-  let isSettled = false;
-  const sendPromise = client.sendMessage(jid, content, options)
-    .then(result => {
-      isSettled = true;
-      return result;
-    })
-    .catch(err => {
-      isSettled = true;
-      throw err;
-    });
-
+  const sendPromise = client.sendMessage(jid, content, options);
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => {
-      if (!isSettled) {
-        const error = new Error(`Timeout WhatsApp après ${WA_SEND_TIMEOUT_MS}ms`);
-        error.statusCode = 504;
-        reject(error);
-      }
+      const error = new Error(`Timeout WhatsApp après ${WA_SEND_TIMEOUT_MS}ms`);
+      error.statusCode = 504;
+      reject(error);
     }, WA_SEND_TIMEOUT_MS);
   });
 
-  try {
-    return await Promise.race([sendPromise, timeoutPromise]);
-  } finally {
-    sendPromise.catch(() => {});
-  }
+  return Promise.race([sendPromise, timeoutPromise]);
 }
 
 async function processImage(url) {
   try {
-    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
     const buffer = Buffer.from(response.data, 'binary');
 
     // Compress and resize
@@ -175,29 +159,35 @@ const sendMessageViaAdmin = async (targetPhone, message) => {
     }
     const adminId = adminRes.rows[0].id;
 
-    // 2. Trouver une instance admin disponible
+    // 2. Trouver une instance admin
     const instanceRes = await pool.query(
-      "SELECT session_name, api_key FROM wa_instances WHERE user_id = $1 AND status IN ('CONNECTED', 'AUTHENTICATED', 'QR_READY') ORDER BY status = 'CONNECTED' DESC LIMIT 1",
+      "SELECT session_name, api_key FROM wa_instances WHERE user_id = $1 LIMIT 1",
       [adminId]
     );
 
     if (instanceRes.rows.length === 0) {
-      console.error('Aucune instance admin disponible pour envoyer le message');
+      console.error('Aucune instance admin configurée pour envoyer le message');
       return false;
     }
 
-    const sessionName = instanceRes.rows[0].session_name;
-    const apiKey = instanceRes.rows[0].api_key;
+    const { session_name: sessionName, api_key: instanceApiKey } = instanceRes.rows[0];
     let client = sessionManager.getSession(sessionName);
     if (!client) {
-      console.log(`Admin client absent en mémoire, démarrage lazy pour ${sessionName}`);
-      client = sessionManager.createSession(sessionName, apiKey);
+      console.log(`Admin lazy start pour ${sessionName}`);
+      client = sessionManager.createSession(sessionName, instanceApiKey);
     }
 
-    await assertClientReady(client);
+    if (!client.isReady) {
+      const becameReady = await waitForClientReady(client, 30000);
+      if (!becameReady) {
+        console.error('Client admin non prêt après tentative de démarrage');
+        return false;
+      }
+    }
 
+    // 3. Envoyer le message
     const recipientJid = await resolveRecipient(client, targetPhone);
-    await sendMessageWithTimeout(client, recipientJid, message);
+    await client.sendMessage(recipientJid, message);
     return true;
 
   } catch (err) {
@@ -543,6 +533,30 @@ app.get('/api/instances/:id/qr', authenticateToken, async (req, res) => {
   }
 });
 
+app.post('/api/instances/:id/reconnect', authenticateToken, async (req, res) => {
+  try {
+    let query = 'SELECT * FROM wa_instances WHERE id = $1';
+    const params = [req.params.id];
+    if (req.user.role !== 'admin') {
+      query += ' AND user_id = $2';
+      params.push(req.user.id);
+    }
+
+    const result = await pool.query(query, params);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Instance non trouvée' });
+    }
+
+    const instance = result.rows[0];
+    await sessionManager.deleteSession(instance.session_name);
+    sessionManager.createSession(instance.session_name, instance.api_key);
+    res.json({ message: 'Reconnect demandé, vérifiez le statut dans quelques secondes.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 app.get('/api/messages', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
@@ -583,9 +597,6 @@ const authenticateApiKey = async (req, res, next) => {
     const user = result.rows[0];
     const sessionName = user.session_name;
 
-    // 1bis. Lazy load de la session si elle n'est pas déjà en mémoire
-    let client = sessionManager.getOrCreateSession(sessionName, apiKey);
-
     // 2. Vérifier les limites (Système de Crédits) — admins exemptés
     if (user.role !== 'admin') {
       const limit = user.message_limit || 25;
@@ -595,6 +606,15 @@ const authenticateApiKey = async (req, res, next) => {
           code: 'LIMIT_REACHED'
         });
       }
+    }
+
+    // 3. Récupérer le client WhatsApp
+    let client = sessionManager.getSession(sessionName);
+
+    // Si le client n'est pas en mémoire, démarrez-le en lazy-loading pour les sessions non déconnectées.
+    if (!client) {
+      console.log(`API lazy start pour session ${sessionName}`);
+      client = sessionManager.createSession(sessionName, apiKey);
     }
 
     await assertClientReady(client);

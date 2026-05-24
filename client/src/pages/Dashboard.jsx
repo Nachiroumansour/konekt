@@ -150,6 +150,26 @@ export default function Dashboard() {
     setTimeout(() => clearInterval(interval), 60000);
   };
 
+  const reconnectInstance = async (instance) => {
+    try {
+      const res = await fetch(`/api/instances/${instance.id}/reconnect`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        alert('Reconnect demandé. Vérifiez le statut de l’instance dans quelques secondes.');
+        fetchInstances();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erreur lors de la reconnexion');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erreur réseau lors de la reconnexion');
+    }
+  };
+
   const fallbackCopyText = (text) => {
     const textarea = document.createElement('textarea');
     textarea.value = text;
@@ -306,7 +326,7 @@ export default function Dashboard() {
                   <div className="mt-6 flex justify-between items-center pt-4 border-t border-slate-100">
                     {instance.status === 'CONNECTED' ? (
                       <button
-                        onClick={() => showQr(instance)}
+                        onClick={() => reconnectInstance(instance)}
                         className="flex items-center text-sm font-medium text-slate-500 hover:text-emerald-600 transition-colors"
                       >
                         <RefreshCw className="h-4 w-4 mr-2" />

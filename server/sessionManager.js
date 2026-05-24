@@ -1,7 +1,10 @@
+import path from 'path';
 import QRCode from 'qrcode';
 import pkg from 'whatsapp-web.js';
 import { pool } from './db.js';
 const { Client, LocalAuth } = pkg;
+
+const AUTH_DATA_PATH = path.resolve(process.cwd(), '.wwebjs_auth');
 
 class SessionManager {
   constructor() {
@@ -18,9 +21,9 @@ class SessionManager {
 
   async initializeSessions() {
     console.log('Restauration des sessions actives...');
-    // Optimisation: Ne redémarrer que les sessions qui étaient connectées, authentifiées ou en attente de QR
-    // Les sessions 'DISCONNECTED' ne seront démarrées que sur demande (Lazy Loading)
-    const res = await pool.query("SELECT * FROM wa_instances WHERE status IN ('CONNECTED', 'AUTHENTICATED', 'QR_READY')");
+    // Optimisation: Ne redémarrer que les sessions qui n'étaient pas explicitement déconnectées.
+    // Cela inclut les sessions CONNECTED, QR_READY, AUTHENTICATED et même STARTING.
+    const res = await pool.query("SELECT * FROM wa_instances WHERE status IN ('CONNECTED', 'QR_READY', 'AUTHENTICATED', 'STARTING')");
     for (const instance of res.rows) {
       console.log(`Démarrage de la session: ${instance.session_name}`);
       this.createSession(instance.session_name, instance.api_key);
@@ -43,7 +46,7 @@ class SessionManager {
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: sessionName,
-        dataPath: './.wwebjs_auth'
+        dataPath: AUTH_DATA_PATH
       }),
       puppeteer: {
         executablePath: process.env.CHROME_PATH || undefined,
@@ -71,6 +74,12 @@ class SessionManager {
 
     client.on('change_state', state => {
       console.log(`Client ${sessionName} state:`, state);
+      if (['CONFLICT', 'UNLAUNCHED', 'UNPAIRED'].includes(state)) {
+        console.warn(`Client ${sessionName} state problem detected: ${state}`);
+        this.restartSession(sessionName, effectiveApiKey, `state:${state}`).catch(err => {
+          console.error(`Restart failed for ${sessionName} after state ${state}:`, err);
+        });
+      }
     });
     client.on('error', err => {
       console.error(`Client ${sessionName} error:`, err);
@@ -83,6 +92,7 @@ class SessionManager {
       this.clearBootWatchdog(sessionName);
       this.sessions.delete(sessionName);
       await this.updateStatus(sessionName, 'DISCONNECTED');
+      await this.restartSession(sessionName, effectiveApiKey, 'auth_failure');
     });
 
     client.on('qr', async (qr) => {
@@ -151,7 +161,6 @@ class SessionManager {
 
     this.sessionApiKeys.delete(sessionName);
     this.restartAttempts.delete(sessionName);
-    await this.updateStatus(sessionName, 'DISCONNECTED');
   }
 
   async updateStatus(sessionName, status) {
@@ -218,14 +227,6 @@ class SessionManager {
 
   getSession(sessionName) {
     return this.sessions.get(sessionName);
-  }
-
-  getOrCreateSession(sessionName, apiKey) {
-    let client = this.sessions.get(sessionName);
-    if (!client) {
-      client = this.createSession(sessionName, apiKey);
-    }
-    return client;
   }
 
   getQrCode(sessionName) {

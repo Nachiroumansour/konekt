@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+const AUTH_DATA_PATH = path.resolve(process.cwd(), '.wwebjs_auth');
+
 function deleteLocks(dir) {
     if (!fs.existsSync(dir)) return;
 
@@ -28,5 +30,5 @@ function deleteLocks(dir) {
 }
 
 console.log('Starting cleanup of Chromium locks...');
-deleteLocks('./.wwebjs_auth');
-console.log('Cleanup finished.');
+deleteLocks(AUTH_DATA_PATH);
+console.log(`Cleanup finished. Auth path: ${AUTH_DATA_PATH}`);
