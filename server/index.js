@@ -59,7 +59,7 @@ async function resolveRecipient(client, phone) {
   return numberId._serialized;
 }
 
-async function waitForClientReady(client, timeoutMs = 15000) {
+async function waitForClientReady(client, timeoutMs = 30000) {
   if (!client) return false;
   if (client.isReady) return true;
 
@@ -118,21 +118,37 @@ async function assertClientReady(client) {
 }
 
 async function sendMessageWithTimeout(client, jid, content, options = undefined) {
-  const sendPromise = client.sendMessage(jid, content, options);
+  let isSettled = false;
+  const sendPromise = client.sendMessage(jid, content, options)
+    .then(result => {
+      isSettled = true;
+      return result;
+    })
+    .catch(err => {
+      isSettled = true;
+      throw err;
+    });
+
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => {
-      const error = new Error(`Timeout WhatsApp après ${WA_SEND_TIMEOUT_MS}ms`);
-      error.statusCode = 504;
-      reject(error);
+      if (!isSettled) {
+        const error = new Error(`Timeout WhatsApp après ${WA_SEND_TIMEOUT_MS}ms`);
+        error.statusCode = 504;
+        reject(error);
+      }
     }, WA_SEND_TIMEOUT_MS);
   });
 
-  return Promise.race([sendPromise, timeoutPromise]);
+  try {
+    return await Promise.race([sendPromise, timeoutPromise]);
+  } finally {
+    sendPromise.catch(() => {});
+  }
 }
 
 async function processImage(url) {
   try {
-    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
     const buffer = Buffer.from(response.data, 'binary');
 
     // Compress and resize
@@ -159,28 +175,29 @@ const sendMessageViaAdmin = async (targetPhone, message) => {
     }
     const adminId = adminRes.rows[0].id;
 
-    // 2. Trouver une instance connectée de l'admin
+    // 2. Trouver une instance admin disponible
     const instanceRes = await pool.query(
-      "SELECT session_name FROM wa_instances WHERE user_id = $1 AND status = 'CONNECTED' LIMIT 1",
+      "SELECT session_name, api_key FROM wa_instances WHERE user_id = $1 AND status IN ('CONNECTED', 'AUTHENTICATED', 'QR_READY') ORDER BY status = 'CONNECTED' DESC LIMIT 1",
       [adminId]
     );
 
     if (instanceRes.rows.length === 0) {
-      console.error('Aucune instance admin connectée pour envoyer le message');
+      console.error('Aucune instance admin disponible pour envoyer le message');
       return false;
     }
 
     const sessionName = instanceRes.rows[0].session_name;
-    const client = sessionManager.getSession(sessionName);
-
-    if (!client || !client.isReady) {
-      console.error('Client admin non trouvé en mémoire ou déconnecté');
-      return false;
+    const apiKey = instanceRes.rows[0].api_key;
+    let client = sessionManager.getSession(sessionName);
+    if (!client) {
+      console.log(`Admin client absent en mémoire, démarrage lazy pour ${sessionName}`);
+      client = sessionManager.createSession(sessionName, apiKey);
     }
 
-    // 3. Envoyer le message
+    await assertClientReady(client);
+
     const recipientJid = await resolveRecipient(client, targetPhone);
-    await client.sendMessage(recipientJid, message);
+    await sendMessageWithTimeout(client, recipientJid, message);
     return true;
 
   } catch (err) {
@@ -566,6 +583,9 @@ const authenticateApiKey = async (req, res, next) => {
     const user = result.rows[0];
     const sessionName = user.session_name;
 
+    // 1bis. Lazy load de la session si elle n'est pas déjà en mémoire
+    let client = sessionManager.getOrCreateSession(sessionName, apiKey);
+
     // 2. Vérifier les limites (Système de Crédits) — admins exemptés
     if (user.role !== 'admin') {
       const limit = user.message_limit || 25;
@@ -576,12 +596,6 @@ const authenticateApiKey = async (req, res, next) => {
         });
       }
     }
-
-    // 3. Récupérer le client WhatsApp
-    const client = sessionManager.getSession(sessionName);
-
-    // Si le client n'est pas en mémoire, on essaie de le trouver via sessionManager (au cas où)
-    // Mais sessionManager.getSession est ce qu'on veut.
 
     await assertClientReady(client);
 
@@ -723,7 +737,7 @@ app.post('/send-otp', authenticateApiKey, async (req, res) => {
 });
 
 // --- Catch-all Frontend ---
-app.get('/{*splat}', (req, res) => {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

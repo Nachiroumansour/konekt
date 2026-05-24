@@ -7,13 +7,20 @@ class SessionManager {
   constructor() {
     this.sessions = new Map(); // session_name -> Client
     this.qrCodes = new Map(); // session_name -> QR Code Data URL
+    this.bootWatchdogs = new Map(); // session_name -> Timeout
+    this.restartAttempts = new Map(); // session_name -> number
+    this.sessionApiKeys = new Map(); // session_name -> api_key
+
+    this.BOOT_TIMEOUT_MS = Number(process.env.WA_BOOT_TIMEOUT_MS || 180000);
+    this.RESTART_DELAY_MS = Number(process.env.WA_RESTART_DELAY_MS || 10000);
+    this.MAX_RESTART_ATTEMPTS = Number(process.env.WA_MAX_RESTART_ATTEMPTS || 2);
   }
 
   async initializeSessions() {
     console.log('Restauration des sessions actives...');
-    // Optimisation: Ne redémarrer que les sessions qui étaient connectées ou en attente de QR
+    // Optimisation: Ne redémarrer que les sessions qui étaient connectées, authentifiées ou en attente de QR
     // Les sessions 'DISCONNECTED' ne seront démarrées que sur demande (Lazy Loading)
-    const res = await pool.query("SELECT * FROM wa_instances WHERE status IN ('CONNECTED', 'QR_READY')");
+    const res = await pool.query("SELECT * FROM wa_instances WHERE status IN ('CONNECTED', 'AUTHENTICATED', 'QR_READY')");
     for (const instance of res.rows) {
       console.log(`Démarrage de la session: ${instance.session_name}`);
       this.createSession(instance.session_name, instance.api_key);
@@ -23,6 +30,16 @@ class SessionManager {
   }
 
   createSession(sessionName, apiKey) {
+    const existingClient = this.sessions.get(sessionName);
+    if (existingClient) {
+      return existingClient;
+    }
+
+    const effectiveApiKey = apiKey || this.sessionApiKeys.get(sessionName) || null;
+    if (effectiveApiKey) {
+      this.sessionApiKeys.set(sessionName, effectiveApiKey);
+    }
+
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: sessionName,
@@ -44,6 +61,8 @@ class SessionManager {
     });
 
     client.isReady = false;
+    this.updateStatus(sessionName, 'STARTING').catch(() => {});
+    this.scheduleBootWatchdog(sessionName, effectiveApiKey);
 
     // Ajout de logs sur tous les événements pour debug
     client.on('loading_screen', (percent, message) => {
@@ -61,6 +80,8 @@ class SessionManager {
       console.error(`Client ${sessionName} auth_failure:`, msg);
       client.isReady = false;
       this.qrCodes.delete(sessionName);
+      this.clearBootWatchdog(sessionName);
+      this.sessions.delete(sessionName);
       await this.updateStatus(sessionName, 'DISCONNECTED');
     });
 
@@ -69,6 +90,7 @@ class SessionManager {
       try {
         const dataUrl = await QRCode.toDataURL(qr);
         this.qrCodes.set(sessionName, dataUrl);
+        this.clearBootWatchdog(sessionName);
         await this.updateStatus(sessionName, 'QR_READY');
       } catch (err) {
         console.error('Erreur génération QR:', err);
@@ -79,6 +101,7 @@ class SessionManager {
       console.log(`Client ${sessionName} authentifié !`);
       this.qrCodes.delete(sessionName);
       client.isReady = false;
+      this.scheduleBootWatchdog(sessionName, effectiveApiKey);
       await this.updateStatus(sessionName, 'AUTHENTICATED');
     });
 
@@ -87,6 +110,8 @@ class SessionManager {
       console.log(`Client ${sessionName} est prêt !`);
       client.isReady = true;
       this.qrCodes.delete(sessionName);
+      this.clearBootWatchdog(sessionName);
+      this.restartAttempts.set(sessionName, 0);
       await this.updateStatus(sessionName, 'CONNECTED');
     });
 
@@ -94,13 +119,16 @@ class SessionManager {
       console.log(`Client ${sessionName} déconnecté: ${reason}`);
       client.isReady = false;
       this.qrCodes.delete(sessionName);
+      this.clearBootWatchdog(sessionName);
+      this.sessions.delete(sessionName);
       await this.updateStatus(sessionName, 'DISCONNECTED');
     });
 
     client.initialize().catch(async (err) => {
       console.error(`Erreur init client ${sessionName}:`, err);
       client.isReady = false;
-      await this.updateStatus(sessionName, 'DISCONNECTED');
+      this.clearBootWatchdog(sessionName);
+      await this.restartSession(sessionName, effectiveApiKey, 'initialize-error');
     });
 
     this.sessions.set(sessionName, client);
@@ -108,6 +136,8 @@ class SessionManager {
   }
 
   async deleteSession(sessionName) {
+    this.clearBootWatchdog(sessionName);
+
     const client = this.sessions.get(sessionName);
     if (client) {
       try {
@@ -118,6 +148,10 @@ class SessionManager {
       this.sessions.delete(sessionName);
       this.qrCodes.delete(sessionName);
     }
+
+    this.sessionApiKeys.delete(sessionName);
+    this.restartAttempts.delete(sessionName);
+    await this.updateStatus(sessionName, 'DISCONNECTED');
   }
 
   async updateStatus(sessionName, status) {
@@ -128,8 +162,70 @@ class SessionManager {
     }
   }
 
+  clearBootWatchdog(sessionName) {
+    const timer = this.bootWatchdogs.get(sessionName);
+    if (timer) {
+      clearTimeout(timer);
+      this.bootWatchdogs.delete(sessionName);
+    }
+  }
+
+  scheduleBootWatchdog(sessionName, apiKey) {
+    if (!this.BOOT_TIMEOUT_MS || this.BOOT_TIMEOUT_MS <= 0) return;
+
+    this.clearBootWatchdog(sessionName);
+
+    const timer = setTimeout(() => {
+      this.handleBootTimeout(sessionName, apiKey).catch(err => {
+        console.error(`Erreur watchdog ${sessionName}:`, err);
+      });
+    }, this.BOOT_TIMEOUT_MS);
+
+    this.bootWatchdogs.set(sessionName, timer);
+  }
+
+  async handleBootTimeout(sessionName, apiKey) {
+    const client = this.sessions.get(sessionName);
+    if (!client || client.isReady) return;
+
+    console.warn(`Session ${sessionName} bloquée en chargement > ${this.BOOT_TIMEOUT_MS}ms`);
+    await this.restartSession(sessionName, apiKey, 'boot-timeout');
+  }
+
+  async restartSession(sessionName, apiKey, reason = 'unknown') {
+    const attempts = this.restartAttempts.get(sessionName) || 0;
+
+    if (attempts >= this.MAX_RESTART_ATTEMPTS) {
+      console.error(`Session ${sessionName} abandon après ${attempts} tentative(s) (${reason})`);
+      await this.updateStatus(sessionName, 'DISCONNECTED');
+      return;
+    }
+
+    const nextAttempt = attempts + 1;
+    this.restartAttempts.set(sessionName, nextAttempt);
+
+    console.warn(`Restart session ${sessionName} tentative ${nextAttempt}/${this.MAX_RESTART_ATTEMPTS} (${reason})`);
+    await this.deleteSession(sessionName);
+
+    setTimeout(() => {
+      try {
+        this.createSession(sessionName, apiKey);
+      } catch (err) {
+        console.error(`Erreur restart session ${sessionName}:`, err);
+      }
+    }, this.RESTART_DELAY_MS);
+  }
+
   getSession(sessionName) {
     return this.sessions.get(sessionName);
+  }
+
+  getOrCreateSession(sessionName, apiKey) {
+    let client = this.sessions.get(sessionName);
+    if (!client) {
+      client = this.createSession(sessionName, apiKey);
+    }
+    return client;
   }
 
   getQrCode(sessionName) {
