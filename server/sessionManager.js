@@ -57,7 +57,13 @@ class SessionManager {
           '--disable-dev-shm-usage',
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
-          '--disable-gpu'
+          '--disable-gpu',
+          // Réduction mémoire / stabilité headless pour éviter les blocages au boot
+          '--disable-extensions',
+          '--disable-software-rasterizer',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding'
         ],
         headless: true, // or 'new'
       }
@@ -206,15 +212,18 @@ class SessionManager {
 
     if (attempts >= this.MAX_RESTART_ATTEMPTS) {
       console.error(`Session ${sessionName} abandon après ${attempts} tentative(s) (${reason})`);
+      await this.deleteSession(sessionName);
       await this.updateStatus(sessionName, 'DISCONNECTED');
       return;
     }
 
     const nextAttempt = attempts + 1;
-    this.restartAttempts.set(sessionName, nextAttempt);
 
     console.warn(`Restart session ${sessionName} tentative ${nextAttempt}/${this.MAX_RESTART_ATTEMPTS} (${reason})`);
+    // deleteSession() efface le compteur de tentatives : on le repositionne
+    // APRÈS sinon il est remis à zéro à chaque restart -> boucle infinie en STARTING.
     await this.deleteSession(sessionName);
+    this.restartAttempts.set(sessionName, nextAttempt);
 
     setTimeout(() => {
       try {

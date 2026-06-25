@@ -3,8 +3,11 @@ services:
     image: ghcr.io/nachiroumansour/konekt:${IMAGE_TAG:-latest}
     container_name: konekt
     restart: unless-stopped
-    mem_limit: 1024m
-    cpus: 1.0
+    # Chromium (whatsapp-web.js) consomme ~500-800 Mo au boot par session.
+    # 1 Go était trop juste -> Chromium se faisait tuer (OOM) et la session
+    # restait bloquée en STARTING. On laisse de la marge.
+    mem_limit: 2048m
+    cpus: 1.5
     environment:
       - PORT=4001
       - DATABASE_URL=${DATABASE_URL}
