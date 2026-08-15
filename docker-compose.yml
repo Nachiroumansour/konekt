@@ -14,8 +14,10 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - ADMIN_PHONE=${ADMIN_PHONE}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - VIRTUAL_HOST=konekt.livelink.store
-      - LETSENCRYPT_HOST=konekt.livelink.store
+      # Domaine public de l'instance. Surchargez KONEKT_HOST dans le .env du serveur
+      # pour basculer de domaine sans toucher au code (nginx-proxy + Let's Encrypt suivent).
+      - VIRTUAL_HOST=${KONEKT_HOST:-konekt.mbotay.sn}
+      - LETSENCRYPT_HOST=${KONEKT_HOST:-konekt.mbotay.sn}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
     volumes:
       - wa-sessions:/app/.wwebjs_auth
