@@ -1,3 +1,5 @@
+import { execFileSync } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
 import pkg from 'whatsapp-web.js';
@@ -5,6 +7,49 @@ import { pool } from './db.js';
 const { Client, LocalAuth } = pkg;
 
 const AUTH_DATA_PATH = path.resolve(process.cwd(), '.wwebjs_auth');
+const DESTROY_TIMEOUT_MS = 15000;
+
+function sessionDataDir(sessionName) {
+  return path.join(AUTH_DATA_PATH, `session-${sessionName}`);
+}
+
+// Tue un Chromium resté vivant sur le profil de la session et retire ses verrous.
+// Sans ça, le prochain launch échoue avec "The browser is already running for ...".
+function killOrphanBrowser(sessionName) {
+  const dataDir = sessionDataDir(sessionName);
+  try {
+    execFileSync('pkill', ['-9', '-f', '--', `--user-data-dir=${dataDir}`], { stdio: 'ignore' });
+    console.warn(`Chromium orphelin tué pour ${sessionName}`);
+  } catch (e) {
+    // pkill sort en erreur quand aucun processus ne correspond (ou s'il est absent) : rien à faire.
+  }
+
+  for (const name of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
+    try {
+      fs.rmSync(path.join(dataDir, name), { force: true });
+    } catch (e) {
+      console.error(`Suppression verrou ${name} impossible pour ${sessionName}:`, e.message);
+    }
+  }
+}
+
+// Ferme le client ET son navigateur. client.destroy() peut rester bloqué quand la page
+// est figée : on borne l'attente puis on tue le processus Chromium.
+async function destroyClient(sessionName, client) {
+  const browserProcess = client.pupBrowser?.process?.();
+  try {
+    await Promise.race([
+      client.destroy(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('destroy timeout')), DESTROY_TIMEOUT_MS))
+    ]);
+  } catch (e) {
+    console.error(`Erreur destruction client ${sessionName}:`, e.message);
+  }
+
+  if (browserProcess && browserProcess.exitCode === null && !browserProcess.killed) {
+    browserProcess.kill('SIGKILL');
+  }
+}
 
 class SessionManager {
   constructor() {
@@ -42,6 +87,9 @@ class SessionManager {
     if (effectiveApiKey) {
       this.sessionApiKeys.set(sessionName, effectiveApiKey);
     }
+
+    // Aucun client connu pour cette session : tout Chromium encore attaché au profil est orphelin.
+    killOrphanBrowser(sessionName);
 
     const client = new Client({
       authStrategy: new LocalAuth({
@@ -95,9 +143,8 @@ class SessionManager {
       console.error(`Client ${sessionName} auth_failure:`, msg);
       client.isReady = false;
       this.qrCodes.delete(sessionName);
-      this.clearBootWatchdog(sessionName);
-      this.sessions.delete(sessionName);
       await this.updateStatus(sessionName, 'DISCONNECTED');
+      // restartSession() détruit le client (et son Chromium) avant de relancer.
       await this.restartSession(sessionName, effectiveApiKey, 'auth_failure');
     });
 
@@ -136,7 +183,12 @@ class SessionManager {
       client.isReady = false;
       this.qrCodes.delete(sessionName);
       this.clearBootWatchdog(sessionName);
-      this.sessions.delete(sessionName);
+      // Ne retirer de la map que ce client-ci, et fermer son Chromium : sinon il reste
+      // orphelin, garde le verrou du profil et bloque tout redémarrage.
+      if (this.sessions.get(sessionName) === client) {
+        this.sessions.delete(sessionName);
+      }
+      await destroyClient(sessionName, client);
       await this.updateStatus(sessionName, 'DISCONNECTED');
     });
 
@@ -156,17 +208,21 @@ class SessionManager {
 
     const client = this.sessions.get(sessionName);
     if (client) {
-      try {
-        await client.destroy();
-      } catch (e) {
-        console.error(`Erreur destruction client ${sessionName}:`, e);
-      }
       this.sessions.delete(sessionName);
       this.qrCodes.delete(sessionName);
+      await destroyClient(sessionName, client);
     }
 
     this.sessionApiKeys.delete(sessionName);
     this.restartAttempts.delete(sessionName);
+  }
+
+  // Repart d'une session vierge (nouveau QR) : sert à changer de numéro WhatsApp.
+  async resetSession(sessionName, apiKey) {
+    await this.deleteSession(sessionName);
+    killOrphanBrowser(sessionName);
+    fs.rmSync(sessionDataDir(sessionName), { recursive: true, force: true });
+    return this.createSession(sessionName, apiKey);
   }
 
   async updateStatus(sessionName, status) {

@@ -24,6 +24,10 @@ const PORT = process.env.PORT || 4001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-change-me';
 const WA_SECRET_LEGACY = process.env.WA_SECRET;
 const WA_SEND_TIMEOUT_MS = Number(process.env.WA_SEND_TIMEOUT_MS || 25000);
+// Attente max d'une session pas encore prête : doit rester bien en dessous du timeout
+// HTTP des clients de l'API (30s) pour qu'ils reçoivent le 503 au lieu d'un timeout muet.
+const WA_READY_WAIT_MS = Number(process.env.WA_READY_WAIT_MS || 8000);
+const WA_CALL_TIMEOUT_MS = Number(process.env.WA_CALL_TIMEOUT_MS || 10000);
 
 app.use(helmet({
   contentSecurityPolicy: false
@@ -40,6 +44,20 @@ function toJid(phone) {
   return `${digits}@c.us`;
 }
 
+// Borne un appel à la page WhatsApp : si Chromium est figé, puppeteer attendrait protocolTimeout (2 min).
+function withTimeout(promise, label, timeoutMs = WA_CALL_TIMEOUT_MS) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`Instance WhatsApp ne répond pas (${label})`);
+      error.statusCode = 504;
+      reject(error);
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
 async function resolveRecipient(client, phone) {
   const digits = String(phone || '').replace(/[^\d]/g, '');
 
@@ -49,7 +67,7 @@ async function resolveRecipient(client, phone) {
     throw error;
   }
 
-  const numberId = await client.getNumberId(digits);
+  const numberId = await withTimeout(client.getNumberId(digits), 'getNumberId');
   if (!numberId?._serialized) {
     const error = new Error('Numéro WhatsApp introuvable ou invalide');
     error.statusCode = 400;
@@ -98,7 +116,7 @@ async function assertClientReady(client) {
   }
 
   if (!client.isReady) {
-    const becameReady = await waitForClientReady(client, 30000);
+    const becameReady = await waitForClientReady(client, WA_READY_WAIT_MS);
     if (!becameReady) {
       const error = new Error('Instance WhatsApp en cours de démarrage. Réessayez dans quelques secondes.');
       error.statusCode = 503;
@@ -109,7 +127,7 @@ async function assertClientReady(client) {
   // client.isReady est mis à true uniquement par l'événement 'ready' — on s'y fie.
   // getState() peut retourner UNKNOWN brièvement après ready (loading_screen encore en cours),
   // donc on ne bloque que si la déconnexion est explicite.
-  const state = await client.getState().catch(() => null);
+  const state = await withTimeout(client.getState(), 'getState').catch(() => null);
   if (state === 'CONFLICT' || state === 'UNLAUNCHED') {
     const error = new Error(`Instance WhatsApp non disponible (${state})`);
     error.statusCode = 503;
@@ -548,6 +566,12 @@ app.post('/api/instances/:id/reconnect', authenticateToken, async (req, res) => 
     }
 
     const instance = result.rows[0];
+    if (req.body?.fresh) {
+      // Session vierge : oublie le compte WhatsApp lié et redemande un QR (changement de numéro).
+      await sessionManager.resetSession(instance.session_name, instance.api_key);
+      return res.json({ message: 'Session réinitialisée, scannez le nouveau QR.' });
+    }
+
     await sessionManager.deleteSession(instance.session_name);
     sessionManager.createSession(instance.session_name, instance.api_key);
     res.json({ message: 'Reconnect demandé, vérifiez le statut dans quelques secondes.' });
@@ -663,9 +687,6 @@ app.post('/send', authenticateApiKey, async (req, res) => {
   }
 
   try {
-    // Vérification supplémentaire de l'état du client WhatsApp
-    await assertClientReady(req.waClient);
-
     const jid = await resolveRecipient(req.waClient, phone);
 
     if (mediaUrl) {

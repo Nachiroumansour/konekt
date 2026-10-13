@@ -146,8 +146,31 @@ export default function Dashboard() {
       }
     }, 2000);
 
-    // Stop polling after 60s
-    setTimeout(() => clearInterval(interval), 60000);
+    // Chromium met jusqu'à ~1-2 min à afficher le QR sur une session vierge
+    setTimeout(() => clearInterval(interval), 180000);
+  };
+
+  const changeNumber = async (instance) => {
+    if (!window.confirm('Délier le numéro WhatsApp actuel et afficher un nouveau QR ?')) return;
+
+    try {
+      const res = await fetch(`/api/instances/${instance.id}/reconnect`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fresh: true }),
+      });
+
+      if (res.ok) {
+        await fetchInstances();
+        showQr(instance);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erreur lors de la réinitialisation');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Erreur réseau lors de la réinitialisation');
+    }
   };
 
   const reconnectInstance = async (instance) => {
@@ -341,6 +364,14 @@ export default function Dashboard() {
                         Connecter WhatsApp
                       </button>
                     )}
+
+                    <button
+                      onClick={() => changeNumber(instance)}
+                      className="flex items-center text-sm font-medium text-slate-500 hover:text-emerald-600 transition-colors"
+                    >
+                      <QrCode className="h-4 w-4 mr-2" />
+                      Changer de numéro
+                    </button>
 
                     <button
                       onClick={() => deleteInstance(instance.id)}
