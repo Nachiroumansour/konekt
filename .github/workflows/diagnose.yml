@@ -1,0 +1,55 @@
+name: Diagnostic Konekt
+
+# Lecture seule : récupère l'état et les logs du conteneur sur le VPS.
+# Le repo est public, donc rien n'est affiché dans les logs Actions :
+# la sortie est chiffrée (DIAG_PASSPHRASE) puis publiée en artifact.
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Collect diagnostics from VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set +e
+          umask 077
+          printf '%s\n' "$VPS_SSH_KEY" > key
+          ssh -i key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 "$VPS_USER@$VPS_HOST" 'bash -s' > diag.txt 2>&1 <<'EOF'
+          echo "=== date ==="; date -u
+          echo "=== docker ps ==="; docker ps -a --filter name=konekt --format '{{.Names}} | {{.Status}} | {{.Image}}'
+          echo "=== inspect ==="; docker inspect -f 'OOMKilled={{.State.OOMKilled}} restarts={{.RestartCount}} started={{.State.StartedAt}} mem={{.HostConfig.Memory}}' konekt
+          echo "=== stats ==="; docker stats --no-stream --format '{{.Name}} mem={{.MemUsage}} cpu={{.CPUPerc}} pids={{.PIDs}}' konekt
+          echo "=== host memory ==="; free -m
+          echo "=== host disk ==="; df -h / /var/lib/docker 2>/dev/null
+          echo "=== host oom (dmesg) ==="; (dmesg -T 2>/dev/null || sudo -n dmesg -T 2>/dev/null) | grep -iE 'out of memory|oom-kill|killed process' | tail -20
+          echo "=== versions ==="
+          docker exec konekt sh -c 'node -v; chromium --version 2>&1; node -p "require(\"./node_modules/whatsapp-web.js/package.json\").version"; node -p "require(\"./node_modules/puppeteer-core/package.json\").version" 2>&1'
+          echo "=== processes ==="; docker exec konekt sh -c 'ps -eo pid,rss,etime,args 2>/dev/null | cut -c1-160 | head -40'
+          echo "=== sessions on disk ==="; docker exec konekt sh -c 'du -sh .wwebjs_auth/* 2>/dev/null; find .wwebjs_auth -maxdepth 2 -name "Singleton*" 2>/dev/null'
+          echo "=== logs (tail 400) ==="; docker logs --timestamps --tail 400 konekt 2>&1
+          EOF
+          echo "ssh exit code: $?" >> diag.txt
+          rm -f key
+          echo "Diagnostic collecté ($(wc -l < diag.txt) lignes)."
+
+      - name: Encrypt
+        env:
+          DIAG_PASSPHRASE: ${{ secrets.DIAG_PASSPHRASE }}
+        run: |
+          test -n "$DIAG_PASSPHRASE"
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in diag.txt -out diag.enc -pass env:DIAG_PASSPHRASE
+          rm -f diag.txt
+
+      - name: Upload encrypted diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: konekt-diag
+          path: diag.enc
+          retention-days: 1
